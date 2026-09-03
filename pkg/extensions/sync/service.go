@@ -283,6 +283,30 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
+// shouldSkipUpstreamIfLocal reports whether this service applies to the request and trusts
+// a locally cached tag instead of contacting the upstream registry.
+func (service *BaseService) shouldSkipUpstreamIfLocal(repo, reference string) (bool, bool) {
+	if _, err := godigest.Parse(reference); err == nil {
+		return true, false
+	}
+
+	if len(service.config.Content) == 0 {
+		return true, service.config.SkipUpstreamIfLocal
+	}
+
+	remoteRepo := service.contentManager.GetRepoSource(repo)
+	if remoteRepo == "" {
+		return false, false
+	}
+
+	tags, err := service.contentManager.FilterTags(remoteRepo, []string{reference})
+	if err != nil || len(tags) != 1 {
+		return true, false
+	}
+
+	return true, service.config.SkipUpstreamIfLocal
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout

@@ -58,6 +58,7 @@ type RegistryConfig struct {
 	Content                []Content
 	TLSVerify              *bool
 	OnDemand               bool
+	SkipUpstreamIfLocal    bool // serve locally cached tags without contacting upstream when onDemand is true
 	CertDir                string
 	MaxRetries             *int
 	RetryDelay             *time.Duration

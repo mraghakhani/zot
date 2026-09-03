@@ -27,6 +27,10 @@ BaseOnDemand tracks requests that can be an image/signature/sbom.
 It keeps track of all parallel requests, if two requests of same image/signature/sbom comes at the same time,
 process just the first one, also keep track of all background retrying routines.
 */
+type localFirstService interface {
+	shouldSkipUpstreamIfLocal(repo, reference string) (bool, bool)
+}
+
 type BaseOnDemand struct {
 	services []Service
 	// map[request]chan err
@@ -40,6 +44,30 @@ func NewOnDemand(log log.Logger) *BaseOnDemand {
 
 func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
+}
+
+// ShouldSkipUpstreamIfLocal reports whether all matching services trust a locally cached tag.
+func (onDemand *BaseOnDemand) ShouldSkipUpstreamIfLocal(repo, reference string) bool {
+	matched := false
+
+	for _, service := range onDemand.services {
+		localFirst, ok := service.(localFirstService)
+		if !ok {
+			continue
+		}
+
+		applies, skip := localFirst.shouldSkipUpstreamIfLocal(repo, reference)
+		if !applies {
+			continue
+		}
+
+		matched = true
+		if !skip {
+			return false
+		}
+	}
+
+	return matched
 }
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {

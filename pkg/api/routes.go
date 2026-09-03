@@ -2764,6 +2764,21 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	if syncEnabled {
+		// If skipUpstreamIfLocal is configured and the tag already exists locally,
+		// serve it without contacting the upstream registry.
+		localFirst, supportsLocalFirst := routeHandler.c.SyncOnDemand.(interface {
+			ShouldSkipUpstreamIfLocal(repo, reference string) bool
+		})
+		if supportsLocalFirst && localFirst.ShouldSkipUpstreamIfLocal(name, reference) {
+			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+			if err == nil {
+				routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+					Msg("skip upstream check: tag found locally, serving cached image")
+
+				return content, digest, mediaType, nil
+			}
+		}
+
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 

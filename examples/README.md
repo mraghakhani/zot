@@ -1442,6 +1442,7 @@ Configure each registry sync:
 			{
 				"urls": ["https://index.docker.io"],
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
+				"skipUpstreamIfLocal": true,          # serve cached tags without checking upstream
 				"tlsVerify": true,
 				"maxRetries": 3,                      
 				"retryDelay": "15m",                # initial HTTP retry delay; fixed 15m interval unless maxRetryDelay is set higher
@@ -1450,6 +1451,8 @@ Configure each registry sync:
 		]
 		}
 ```
+With `skipUpstreamIfLocal`, locally cached tags matching `content.tags` filters are served without an upstream check. Use `semver: true` to trust only semantic-version tags.
+
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
 
 ### Sync's certDir option

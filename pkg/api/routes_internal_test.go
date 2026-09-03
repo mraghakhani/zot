@@ -1,14 +1,68 @@
 package api
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
 
+	godigest "github.com/opencontainers/go-digest"
+
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+type localFirstSyncMock struct {
+	syncCalls int
+}
+
+func (m *localFirstSyncMock) SyncImage(context.Context, string, string) error {
+	m.syncCalls++
+
+	return nil
+}
+
+func (m *localFirstSyncMock) SyncReferrers(context.Context, string, string, []string) error {
+	return nil
+}
+
+func (m *localFirstSyncMock) ShouldSkipUpstreamIfLocal(string, string) bool {
+	return true
+}
+
+func TestGetImageManifestSkipsUpstreamForLocalTag(t *testing.T) {
+	digest := godigest.FromString("cached manifest")
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+			return []byte("cached manifest"), digest, "application/json", nil
+		},
+	}
+	syncMock := &localFirstSyncMock{}
+	controller := &Controller{
+		Config: &config.Config{Extensions: &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{Registries: []syncconf.RegistryConfig{{OnDemand: true}}},
+		}},
+		Log:          log.NewTestLogger(),
+		SyncOnDemand: syncMock,
+	}
+
+	content, gotDigest, mediaType, err := getImageManifest(context.Background(),
+		&RouteHandler{c: controller}, store, "repo", "v1.2.3")
+	if err != nil {
+		t.Fatalf("getImageManifest returned error: %v", err)
+	}
+	if string(content) != "cached manifest" || gotDigest != digest || mediaType != "application/json" {
+		t.Fatalf("unexpected cached manifest: %q, %s, %q", content, gotDigest, mediaType)
+	}
+	if syncMock.syncCalls != 0 {
+		t.Fatalf("expected no upstream sync, got %d calls", syncMock.syncCalls)
+	}
+}
 
 func TestParseRangeHeader(t *testing.T) {
 	t.Parallel()

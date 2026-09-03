@@ -8,6 +8,13 @@ import (
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 )
 
+func TestRegistryConfig_SkipUpstreamIfLocal(t *testing.T) {
+	cfg := syncconf.RegistryConfig{SkipUpstreamIfLocal: true}
+	if !cfg.SkipUpstreamIfLocal {
+		t.Fatal("SkipUpstreamIfLocal was not preserved")
+	}
+}
+
 func TestRegistryConfig_ShouldSyncLegacyCosignTags(t *testing.T) {
 	Convey("ShouldSyncLegacyCosignTags", t, func() {
 		Convey("returns true when SyncLegacyCosignTags is nil (default)", func() {

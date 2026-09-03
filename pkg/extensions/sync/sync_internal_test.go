@@ -46,6 +46,33 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
+func TestBaseServiceShouldSkipUpstreamIfLocal(t *testing.T) {
+	semver := true
+	content := []syncconf.Content{{
+		Prefix: "repo/**",
+		Tags:   &syncconf.Tags{Semver: &semver},
+	}}
+	service := BaseService{
+		config:         syncconf.RegistryConfig{SkipUpstreamIfLocal: true, Content: content},
+		contentManager: NewContentManager(content, log.NewTestLogger()),
+	}
+
+	applies, skip := service.shouldSkipUpstreamIfLocal("repo/image", "v1.2.3")
+	if !applies || !skip {
+		t.Fatalf("expected matching semver tag to be trusted, got applies=%t skip=%t", applies, skip)
+	}
+
+	applies, skip = service.shouldSkipUpstreamIfLocal("repo/image", "latest")
+	if !applies || skip {
+		t.Fatalf("expected non-semver tag not to be trusted, got applies=%t skip=%t", applies, skip)
+	}
+
+	applies, skip = service.shouldSkipUpstreamIfLocal("other/image", "v1.2.3")
+	if applies || skip {
+		t.Fatalf("expected unrelated repository not to apply, got applies=%t skip=%t", applies, skip)
+	}
+}
+
 func TestService(t *testing.T) {
 	Convey("GetRepositories primes auth before listing the catalog", t, func() {
 		const username = "sync-user"
