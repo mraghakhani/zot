@@ -475,7 +475,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference)
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference, false)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
@@ -552,7 +552,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference)
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference, true)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -2750,7 +2750,7 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 
 // will sync on demand if an image is not found, in case sync extensions is enabled.
 func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
-	reference string,
+	reference string, allowSync bool,
 ) ([]byte, godigest.Digest, string, error) {
 	syncEnabled := isSyncOnDemandEnabled(routeHandler.c)
 
@@ -2763,7 +2763,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 	}
 
-	if syncEnabled {
+	if syncEnabled && allowSync {
 		// If skipUpstreamIfLocal is configured and the tag already exists locally,
 		// serve it without contacting the upstream registry.
 		localFirst, supportsLocalFirst := routeHandler.c.SyncOnDemand.(interface {

@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -52,12 +54,37 @@ func TestGetImageManifestSkipsUpstreamForLocalTag(t *testing.T) {
 	}
 
 	content, gotDigest, mediaType, err := getImageManifest(context.Background(),
-		&RouteHandler{c: controller}, store, "repo", "v1.2.3")
+		&RouteHandler{c: controller}, store, "repo", "v1.2.3", true)
 	if err != nil {
 		t.Fatalf("getImageManifest returned error: %v", err)
 	}
 	if string(content) != "cached manifest" || gotDigest != digest || mediaType != "application/json" {
 		t.Fatalf("unexpected cached manifest: %q, %s, %q", content, gotDigest, mediaType)
+	}
+	if syncMock.syncCalls != 0 {
+		t.Fatalf("expected no upstream sync, got %d calls", syncMock.syncCalls)
+	}
+}
+
+func TestGetImageManifestDoesNotSyncWhenDisallowed(t *testing.T) {
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+			return nil, godigest.Digest(""), "", zerr.ErrManifestNotFound
+		},
+	}
+	syncMock := &localFirstSyncMock{}
+	controller := &Controller{
+		Config: &config.Config{Extensions: &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{Registries: []syncconf.RegistryConfig{{OnDemand: true}}},
+		}},
+		Log:          log.NewTestLogger(),
+		SyncOnDemand: syncMock,
+	}
+
+	_, _, _, err := getImageManifest(context.Background(),
+		&RouteHandler{c: controller}, store, "repo", "new-tag", false)
+	if !errors.Is(err, zerr.ErrManifestNotFound) {
+		t.Fatalf("expected manifest-not-found error, got %v", err)
 	}
 	if syncMock.syncCalls != 0 {
 		t.Fatalf("expected no upstream sync, got %d calls", syncMock.syncCalls)
