@@ -475,7 +475,15 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference, true)
+	// Docker probes the manifest digest with HEAD before pushing its manifest.
+	// Do not turn that probe into an upstream pull-through request.
+	allowSync := true
+	if request.Method == http.MethodHead && skipUpstreamIfLocalEnabled(rh.c) &&
+		(zcommon.IsDigest(reference) || rh.c.hasRecentPushIntent(name)) {
+		allowSync = false
+	}
+
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference, allowSync)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
@@ -838,6 +846,8 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	rh.c.clearPushIntent(name)
+
 	if rh.c.MetaDB != nil {
 		if len(digestQueryTags) > 0 {
 			err := meta.OnUpdateManifestDigestTags(request.Context(), name, digestQueryTags, mediaType,
@@ -1112,6 +1122,11 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	digest := godigest.Digest(digestStr)
+
+	if request.Method == http.MethodHead && skipUpstreamIfLocalEnabled(rh.c) {
+		// Docker checks blobs before checking the manifest during push.
+		rh.c.markPushIntent(name)
+	}
 
 	userAc, err := reqCtx.UserAcFromContext(request.Context())
 	if err != nil {
@@ -3015,6 +3030,25 @@ func isSyncOnDemandEnabled(ctlr *Controller) bool {
 	if extensionsConfig.IsSyncEnabled() &&
 		fmt.Sprintf("%v", ctlr.SyncOnDemand) != fmt.Sprintf("%v", nil) {
 		return true
+	}
+
+	return false
+}
+
+func skipUpstreamIfLocalEnabled(ctlr *Controller) bool {
+	if ctlr == nil {
+		return false
+	}
+
+	syncConfig := ctlr.Config.CopyExtensionsConfig().Sync
+	if syncConfig == nil {
+		return false
+	}
+
+	for _, registry := range syncConfig.Registries {
+		if registry.OnDemand && registry.SkipUpstreamIfLocal {
+			return true
+		}
 	}
 
 	return false

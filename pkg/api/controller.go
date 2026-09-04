@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -59,9 +60,36 @@ type Controller struct {
 	taskScheduler   *scheduler.Scheduler
 	Healthz         *common.Healthz
 	// runtime params (atomic: Run may set the port concurrently with GetPort readers, e.g. tests)
-	chosenPort atomic.Int64
+	chosenPort  atomic.Int64
+	pushIntents sync.Map // repository -> last blob probe/upload time
 	// TLS certificate management
 	TlsWatcher atomic.Pointer[TlsConfigWatcher]
+}
+
+const pushIntentTTL = 30 * time.Minute
+
+func (c *Controller) markPushIntent(repo string) {
+	c.pushIntents.Store(repo, time.Now())
+}
+
+func (c *Controller) hasRecentPushIntent(repo string) bool {
+	value, ok := c.pushIntents.Load(repo)
+	if !ok {
+		return false
+	}
+
+	lastActivity, ok := value.(time.Time)
+	if !ok || time.Since(lastActivity) > pushIntentTTL {
+		c.pushIntents.Delete(repo)
+
+		return false
+	}
+
+	return true
+}
+
+func (c *Controller) clearPushIntent(repo string) {
+	c.pushIntents.Delete(repo)
 }
 
 func NewController(appConfig *config.Config) *Controller {

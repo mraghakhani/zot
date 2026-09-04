@@ -1451,7 +1451,7 @@ Configure each registry sync:
 		]
 		}
 ```
-With `skipUpstreamIfLocal`, locally cached tags matching `content.tags` filters are served without an upstream check, including manifest `HEAD` requests. Missing references still trigger on-demand upstream sync. Use `semver: true` to trust only semantic-version tags.
+With `skipUpstreamIfLocal`, locally cached tags matching `content.tags` filters are served without an upstream check, including manifest `HEAD` requests. Docker push manifest-digest `HEAD` probes also avoid on-demand sync. Missing tag references still trigger on-demand upstream sync. Use `semver: true` to trust only semantic-version tags.
 
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
 

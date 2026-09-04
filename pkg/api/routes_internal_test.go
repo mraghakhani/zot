@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -63,6 +66,95 @@ func TestGetImageManifestSkipsUpstreamForLocalTag(t *testing.T) {
 	}
 	if syncMock.syncCalls != 0 {
 		t.Fatalf("expected no upstream sync, got %d calls", syncMock.syncCalls)
+	}
+}
+
+func TestCheckManifestDoesNotSyncDigestProbe(t *testing.T) {
+	digest := godigest.FromString("pushed manifest")
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+			return nil, "", "", zerr.ErrManifestNotFound
+		},
+	}
+	syncMock := &localFirstSyncMock{}
+	controller := &Controller{
+		Config: &config.Config{Extensions: &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{Registries: []syncconf.RegistryConfig{{OnDemand: true, SkipUpstreamIfLocal: true}}},
+		}},
+		Log:             log.NewTestLogger(),
+		StoreController: storage.StoreController{DefaultStore: store},
+		SyncOnDemand:    syncMock,
+	}
+
+	request := httptest.NewRequest(http.MethodHead, "/v2/repo/manifests/"+digest.String(), nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": digest.String()})
+	response := httptest.NewRecorder()
+
+	(&RouteHandler{c: controller}).CheckManifest(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected manifest-not-found response, got %d", response.Code)
+	}
+	if syncMock.syncCalls != 0 {
+		t.Fatalf("expected digest probe not to sync upstream, got %d calls", syncMock.syncCalls)
+	}
+}
+
+func TestCheckManifestDoesNotSyncRecentPushTagProbe(t *testing.T) {
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+			return nil, "", "", zerr.ErrManifestNotFound
+		},
+	}
+	syncMock := &localFirstSyncMock{}
+	controller := &Controller{
+		Config: &config.Config{Extensions: &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{Registries: []syncconf.RegistryConfig{{OnDemand: true, SkipUpstreamIfLocal: true}}},
+		}},
+		Log:             log.NewTestLogger(),
+		StoreController: storage.StoreController{DefaultStore: store},
+		SyncOnDemand:    syncMock,
+	}
+	controller.markPushIntent("repo")
+
+	request := httptest.NewRequest(http.MethodHead, "/v2/repo/manifests/pushfix", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "pushfix"})
+	response := httptest.NewRecorder()
+
+	(&RouteHandler{c: controller}).CheckManifest(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected manifest-not-found response, got %d", response.Code)
+	}
+	if syncMock.syncCalls != 0 {
+		t.Fatalf("expected recent push probe not to sync upstream, got %d calls", syncMock.syncCalls)
+	}
+}
+
+func TestCheckManifestStillSyncsUncachedTag(t *testing.T) {
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+			return nil, "", "", zerr.ErrManifestNotFound
+		},
+	}
+	syncMock := &localFirstSyncMock{}
+	controller := &Controller{
+		Config: &config.Config{Extensions: &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{Registries: []syncconf.RegistryConfig{{OnDemand: true, SkipUpstreamIfLocal: true}}},
+		}},
+		Log:             log.NewTestLogger(),
+		StoreController: storage.StoreController{DefaultStore: store},
+		SyncOnDemand:    syncMock,
+	}
+
+	request := httptest.NewRequest(http.MethodHead, "/v2/repo/manifests/missing", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "missing"})
+	response := httptest.NewRecorder()
+
+	(&RouteHandler{c: controller}).CheckManifest(response, request)
+
+	if syncMock.syncCalls != 1 {
+		t.Fatalf("expected uncached tag probe to sync upstream once, got %d calls", syncMock.syncCalls)
 	}
 }
 
