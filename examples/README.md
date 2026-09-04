@@ -1451,7 +1451,7 @@ Configure each registry sync:
 		]
 		}
 ```
-With `skipUpstreamIfLocal`, locally cached tags matching `content.tags` filters are served without an upstream check. Use `semver: true` to trust only semantic-version tags. Manifest `HEAD` requests never trigger on-demand upstream sync; clients must use `GET` to populate uncached references.
+With `skipUpstreamIfLocal`, locally cached tags matching `content.tags` filters are served without an upstream check, including manifest `HEAD` requests. Missing references still trigger on-demand upstream sync. Use `semver: true` to trust only semantic-version tags.
 
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
 

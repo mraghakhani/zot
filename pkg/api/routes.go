@@ -475,7 +475,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference, false)
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference, true)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
